@@ -90,6 +90,7 @@ const config = {
 const kvStore = level(topic);
 const kafkaStreams = new KafkaStreams(config);
 const stream = kafkaStreams.getKStream(topic);
+const table = kafkaStreams.getKTable(topic, ({ key, value }) => ({ key: key && key.toString(), value: JSON.parse(value.toString()) }));
 
 stream.forEach(handleMessage); //console.log(message.key ? message.key.toString() : null, JSON.parse(message.value.toString())));
 kafkaStreams.on('error', err => console.error(err));
@@ -100,6 +101,12 @@ stream.start()
   )
   .catch(err => console.error(err));
 
+table.start()
+  .then(
+    () => console.log('Table running'),
+    err => console.error(err)
+  );
+
 function handleMessage({ key, value, offset }) {
   if (!key)
     return console.error(`No key for message ${value.toString()}`);
@@ -108,7 +115,6 @@ function handleMessage({ key, value, offset }) {
   const v = value.toString();
   
   kvStore.put(k, v, err => console.error('Error:', err));
-  console.log(`Processed record for topic ${topic} at offset ${offset}`);
 }
 
 //
@@ -118,6 +124,7 @@ function handleMessage({ key, value, offset }) {
 const app = express();
 
 app.get('/:id', handleGet);
+app.get('/table/:id', handleTableGet);
 
 app.listen(process.env.PORT || 3000, () => console.log('Express :3000'));
 
@@ -139,4 +146,13 @@ function respondWithValueOrError(res) {
         .end();
     }
   };
+}
+
+function handleTableGet(req, res) {
+  const { params: { id } } = req;
+
+  table
+    .storage
+    .get(id)
+    .then(val => res.json(val));
 }
